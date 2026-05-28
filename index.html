@@ -78,8 +78,107 @@ else{const locs=uniq(DATA.filter(d=>d.g===state.geo).map(d=>d.l));const comps=lo
 const current=state.mode==="total"?totalRows().find(d=>d.l===state.location):comparisonAt(state.location,state.year).one;if(current&&current.s)traces.push(selectedOutline(current.s));$("mapTitle").textContent=title;$("mapHint").textContent=hint;Plotly.react(map,traces,{margin:{l:0,r:0,t:0,b:0},paper_bgcolor:'#fff',plot_bgcolor:'#fff',geo:{fitbounds:'locations',visible:false,bgcolor:'#fff',projection:{type:'mercator'}},showlegend:false},{responsive:true,displaylogo:false,modeBarButtonsToRemove:['select2d','lasso2d']});}
 function allComparisons(){return locationsForMode().map(l=>({l,c:comparisonAt(l,state.year)})).filter(x=>x.c.one&&x.c.two).map(x=>({...x,diff:diffValue(x.c),rel:relativeDiff(x.c),loss:x.c.loss?x.c.loss.v:null}));}
 function sortedComparisons(){let x=allComparisons(); if(state.order==="g1")x.sort((a,b)=>b.c.one.v-a.c.one.v);else if(state.order==="g2")x.sort((a,b)=>b.c.two.v-a.c.two.v);else if(state.mode==="ajustada")x.sort((a,b)=>(b.loss??0)-(a.loss??0));else x.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff)); return x;}
-function renderBars(){let traces=[],rows,title,hint;if(state.mode==="total"){rows=totalRows().sort((a,b)=>state.indicator.startsWith('Perda')?a.v-b.v:b.v-a.v);if(state.geo==="Brasil"){Plotly.react('bars',[],{annotations:[{text:'Selecione UFs ou Regiões Metropolitanas/RIDE para visualizar as barras.',showarrow:false,font:{size:14,color:'#60748e'}}],xaxis:{visible:false},yaxis:{visible:false},margin:{l:10,r:10,t:10,b:10}},{responsive:true,displaylogo:false});$("barsTitle").textContent='Ranking anual';return;}const rev=[...rows].reverse(),labels=rev.map(d=>d.l.replace('Região Metropolitana de ','RM ').replace('Região Metropolitana do ','RM do ').replace('Região Metropolitana da ','RM da '));traces=[{type:'bar',orientation:'h',x:rev.map(d=>d.v),y:labels,marker:{color:rev.map(d=>d.l===state.location?'#082a62':'#73a9de')},text:rev.map(d=>fmt(d.v,d.u)),textposition:'outside',customdata:rev.map(d=>d.l),hovertemplate:'%{customdata}<br>'+state.indicator+': %{text}<extra></extra>'}];title=`Ranking anual — ${state.indicator}`;hint=`Ano: ${state.year}`;} else{rows=sortedComparisons(); if(state.geo==="Brasil"){rows=[{l:'Brasil',c:comparisonAt('Brasil',state.year),diff:diffValue(comparisonAt('Brasil',state.year)),loss:comparisonAt('Brasil',state.year).loss?.v}];}const rev=[...rows].reverse(),labels=rev.map(d=>d.l.replace('Região Metropolitana de ','RM ').replace('Região Metropolitana do ','RM do ').replace('Região Metropolitana da ','RM da '));traces=[{type:'bar',orientation:'h',name:rev[0]?.c.label1||'',x:rev.map(x=>x.c.one.v),y:labels,marker:{color:state.mode==='sexo'?'#235789':state.mode==='raca'?'#e19824':'#2776bc'},hovertemplate:'%{y}<br>'+ (rev[0]?.c.label1||'') +': %{x:.3f}<extra></extra>'},{type:'bar',orientation:'h',name:rev[0]?.c.label2||'',x:rev.map(x=>x.c.two.v),y:labels,marker:{color:state.mode==='sexo'?'#d7609b':state.mode==='raca'?'#31507d':'#8194ae'},hovertemplate:'%{y}<br>'+ (rev[0]?.c.label2||'') +': %{x:.3f}<extra></extra>'}];title=state.mode==='ajustada'?`Comparação anual — ${PAIRS[state.indicator][0]} × ${PAIRS[state.indicator][1]}`:`Comparação anual — ${MODES[state.mode].groups.join(' × ')}`;hint=`Ano: ${state.year} • ordenação comparativa`;}
-$("barsTitle").textContent=title;$("barsHint").textContent=hint;Plotly.react('bars',traces,{barmode:state.mode==='total'?'relative':'group',margin:{l:state.geo.includes('Metropolitana')?192:126,r:56,t:16,b:44},paper_bgcolor:'#fff',plot_bgcolor:'#fff',xaxis:{gridcolor:'#e9eef5',tickformat:state.mode==='total'&&state.indicator.startsWith('Perda')?'.1f':'.3f'},yaxis:{tickfont:{size:10},automargin:true},legend:{orientation:'h',y:-.15,x:0}}, {responsive:true,displaylogo:false,modeBarButtonsToRemove:['select2d','lasso2d']});}
+function renderBars(){
+  let traces=[],rows,title,hint;
+  const barsEl=$("bars");
+  const abreviarLocalidade=(nome)=>nome
+    .replace('Região Metropolitana de ','RM ')
+    .replace('Região Metropolitana do ','RM do ')
+    .replace('Região Metropolitana da ','RM da ')
+    .replace('Região Administrativa Integrada de Desenvolvimento da Grande Teresina','RIDE Grande Teresina');
+
+  if(state.mode==="total"){
+    rows=totalRows().sort((a,b)=>state.indicator.startsWith('Perda')?a.v-b.v:b.v-a.v);
+
+    if(state.geo==="Brasil"){
+      barsEl.style.height="421px";
+      Plotly.react('bars',[],{
+        annotations:[{text:'Selecione UFs ou Regiões Metropolitanas/RIDE para visualizar as barras.',showarrow:false,font:{size:14,color:'#60748e'}}],
+        xaxis:{visible:false},yaxis:{visible:false},margin:{l:10,r:10,t:10,b:10}
+      },{responsive:true,displaylogo:false});
+      $("barsTitle").textContent='Ranking anual';
+      return;
+    }
+
+    barsEl.style.height="421px";
+    const rev=[...rows].reverse();
+    const labels=rev.map(d=>abreviarLocalidade(d.l));
+    const maxVal=Math.max(...rev.map(d=>d.v));
+    const xMax=state.indicator.startsWith('Perda') ? maxVal*1.20 : Math.max(0.82,Math.min(1.03,maxVal+0.072));
+
+    traces=[{
+      type:'bar',orientation:'h',x:rev.map(d=>d.v),y:labels,
+      marker:{color:rev.map(d=>d.l===state.location?'#082a62':'#73a9de')},
+      text:rev.map(d=>fmt(d.v,d.u)),textposition:'outside',cliponaxis:false,
+      customdata:rev.map(d=>d.l),
+      hovertemplate:'%{customdata}<br>'+state.indicator+': %{text}<extra></extra>'
+    }];
+
+    title=`Ranking anual — ${state.indicator}`;
+    hint=`Ano: ${state.year}`;
+    $("barsTitle").textContent=title;
+    $("barsHint").textContent=hint;
+
+    Plotly.react('bars',traces,{
+      barmode:'relative',
+      margin:{l:state.geo.includes('Metropolitana')?198:126,r:88,t:16,b:44},
+      paper_bgcolor:'#fff',plot_bgcolor:'#fff',
+      xaxis:{gridcolor:'#e9eef5',tickformat:state.indicator.startsWith('Perda')?'.1f':'.3f',range:[0,xMax]},
+      yaxis:{tickfont:{size:10},automargin:true},
+      showlegend:false
+    },{responsive:true,displaylogo:false,modeBarButtonsToRemove:['select2d','lasso2d']});
+    return;
+  }
+
+  rows=sortedComparisons();
+  if(state.geo==="Brasil"){
+    rows=[{l:'Brasil',c:comparisonAt('Brasil',state.year),diff:diffValue(comparisonAt('Brasil',state.year)),loss:comparisonAt('Brasil',state.year).loss?.v}];
+  }
+
+  const rev=[...rows].reverse();
+  const labels=rev.map(d=>abreviarLocalidade(d.l));
+  const maxVal=Math.max(...rev.flatMap(x=>[x.c.one.v,x.c.two.v]));
+  const xMax=Math.max(0.84,Math.min(1.04,maxVal+0.095));
+
+  /* Ajuste exclusivamente visual: duas barras por território necessitam
+     de mais altura para que todas as UFs/RMs permaneçam visíveis. */
+  barsEl.style.height = (state.geo==="Brasil" ? 255 : Math.max(470, rows.length*24+104)) + "px";
+
+  traces=[
+    {
+      type:'bar',orientation:'h',name:rev[0]?.c.label1||'',
+      x:rev.map(x=>x.c.one.v),y:labels,
+      marker:{color:state.mode==='sexo'?'#235789':state.mode==='raca'?'#e19824':'#2776bc'},
+      text:rev.map(x=>fmt(x.c.one.v,'Índice')),textposition:'outside',cliponaxis:false,
+      customdata:rev.map(x=>x.l),
+      hovertemplate:'%{customdata}<br>'+ (rev[0]?.c.label1||'') +': %{x:.3f}<extra></extra>'
+    },
+    {
+      type:'bar',orientation:'h',name:rev[0]?.c.label2||'',
+      x:rev.map(x=>x.c.two.v),y:labels,
+      marker:{color:state.mode==='sexo'?'#d7609b':state.mode==='raca'?'#31507d':'#8194ae'},
+      text:rev.map(x=>fmt(x.c.two.v,'Índice')),textposition:'outside',cliponaxis:false,
+      customdata:rev.map(x=>x.l),
+      hovertemplate:'%{customdata}<br>'+ (rev[0]?.c.label2||'') +': %{x:.3f}<extra></extra>'
+    }
+  ];
+
+  title=state.mode==='ajustada'
+    ?`Comparação anual — ${PAIRS[state.indicator][0]} × ${PAIRS[state.indicator][1]}`
+    :`Comparação anual — ${MODES[state.mode].groups.join(' × ')}`;
+  hint=`Ano: ${state.year} • ordenação comparativa`;
+  $("barsTitle").textContent=title;
+  $("barsHint").textContent=hint;
+
+  Plotly.react('bars',traces,{
+    barmode:'group',
+    margin:{l:state.geo.includes('Metropolitana')?202:126,r:106,t:16,b:58},
+    paper_bgcolor:'#fff',plot_bgcolor:'#fff',
+    xaxis:{gridcolor:'#e9eef5',tickformat:'.3f',range:[0,xMax]},
+    yaxis:{tickfont:{size:state.geo.includes('Metropolitana')?9:10},automargin:true},
+    legend:{orientation:'h',y:-.075,x:0}
+  },{responsive:true,displaylogo:false,modeBarButtonsToRemove:['select2d','lasso2d']});
+}
 function renderTimeline(){const bg=govShapes();bg.shapes.push({type:'line',xref:'x',yref:'paper',x0:state.year,x1:state.year,y0:0,y1:1,line:{color:'#164e92',width:1,dash:'dot'}});let traces=[],title;if(state.mode==='total'){const rows=DATA.filter(d=>d.g===state.geo&&d.l===state.location&&d.r==='Total'&&d.c==='Total'&&d.i===state.indicator&&inPeriod(d)).sort((a,b)=>a.a-b.a);traces=[{x:rows.map(d=>d.a),y:rows.map(d=>d.v),type:'scatter',mode:'lines+markers',name:state.location,line:{color:'#082a62',width:3},marker:{size:7}}];title=`Evolução de ${state.indicator} — ${state.location}`;}else{const c=state.mode==='ajustada'?{groups:PAIRS[state.indicator].slice(0,2),cats:['Total','Total'],colors:['#2776bc','#8194ae']}:{groups:[state.indicator,state.indicator],cats:MODES[state.mode].groups,colors:MODES[state.mode].colors};const s1=selectedPeriodSeries(c.groups[0],c.cats[0]),s2=selectedPeriodSeries(c.groups[1],c.cats[1]);traces=[{x:s2.map(d=>d.a),y:s2.map(d=>d.v),type:'scatter',mode:'lines+markers',name:state.mode==='ajustada'?c.groups[1]:c.cats[1],line:{color:c.colors[1],width:3},marker:{size:7}},{x:s1.map(d=>d.a),y:s1.map(d=>d.v),type:'scatter',mode:'lines+markers',name:state.mode==='ajustada'?c.groups[0]:c.cats[0],line:{color:c.colors[0],width:3},marker:{size:7},fill:'tonexty',fillcolor:'rgba(39,118,188,.10)'}];title=state.mode==='ajustada'?`${PAIRS[state.indicator][0]} × ${PAIRS[state.indicator][1]} — ${state.location}`:`${MODES[state.mode].groups.join(' × ')} — ${state.indicator}`;}
 $("timelineTitle").textContent=title;Plotly.react('timeline',traces,{margin:{l:52,r:20,t:34,b:48},shapes:bg.shapes,annotations:bg.ann,paper_bgcolor:'#fff',plot_bgcolor:'#fff',xaxis:{dtick:1,gridcolor:'#eef2f7',range:[state.start-.45,state.end+.45]},yaxis:{gridcolor:'#e9eef5',tickformat:'.3f',title:{text:'Índice',font:{size:11}}},legend:{orientation:'h',y:-.22,x:0},hovermode:'x unified'},{responsive:true,displaylogo:false});}
 function renderDifference(){if(state.mode==='total'){Plotly.react('difference',[],{annotations:[{text:'Selecione Sexo, Raça/cor ou IDHM × IDHMAD para analisar distâncias.',showarrow:false,font:{size:14,color:'#60748e'}}],xaxis:{visible:false},yaxis:{visible:false},margin:{l:10,r:10,t:10,b:10}},{responsive:true,displaylogo:false});$("differenceTitle").textContent='Distância entre resultados';$("differenceHint").textContent='modos comparativos';return;} if(state.mode==='ajustada'){const dims=Object.keys(PAIRS),vals=dims.map(k=>row(PAIRS[k][2],'Total',state.location,state.year)?.v??null);$("differenceTitle").textContent='Perda pela desigualdade por dimensão';$("differenceHint").textContent=`${state.location} • ${state.year}`;Plotly.react('difference',[{type:'bar',x:dims,y:vals,marker:{color:['#174f98','#4392c5','#76b7b2','#d07e3a']},text:vals.map(v=>fmt(v,'Percentual')),textposition:'outside',hovertemplate:'%{x}<br>Perda: %{y:.1f}%<extra></extra>'}],{margin:{l:50,r:18,t:20,b:46},paper_bgcolor:'#fff',plot_bgcolor:'#fff',yaxis:{gridcolor:'#e9eef5',ticksuffix:'%',title:{text:'Perda (%)',font:{size:11}}},xaxis:{tickfont:{size:11}}},{responsive:true,displaylogo:false});return;}const years=Array.from({length:state.end-state.start+1},(_,i)=>state.start+i),vals=years.map(y=>diffValue(comparisonAt(state.location,y))),bg=govShapes();$("differenceTitle").textContent=`Diferença no tempo — ${MODES[state.mode].diffLabel}`;$("differenceHint").textContent=`${state.location} • pontos do índice`;Plotly.react('difference',[{type:'scatter',x:years,y:vals,mode:'lines+markers',fill:'tozeroy',line:{color:'#2776bc',width:3},marker:{size:7},fillcolor:'rgba(39,118,188,.14)',hovertemplate:'%{x}<br>Diferença: %{y:.3f}<extra></extra>'}],{margin:{l:52,r:20,t:34,b:46},shapes:bg.shapes,annotations:bg.ann,paper_bgcolor:'#fff',plot_bgcolor:'#fff',xaxis:{dtick:1,gridcolor:'#eef2f7',range:[state.start-.45,state.end+.45]},yaxis:{gridcolor:'#e9eef5',tickformat:'.3f',zeroline:true,zerolinecolor:'#8194ae'}},{responsive:true,displaylogo:false});}
